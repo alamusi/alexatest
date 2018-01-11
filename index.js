@@ -4,6 +4,7 @@ const aws = require('aws-sdk')
 const a4b = new aws.AlexaForBusiness()
 const alexa = require('alexa-app')
 const mmf = new alexa.app('mmf')
+const request = require('request')
 
 const debug = require('debug')('alexa.test')
 
@@ -20,17 +21,22 @@ mmf.express({
   preRequest: undefined,
   postRequest: undefined,
   checkCert: true,
-  endpoint: 'alexa',
+  endpoint: 'mmf',
   debug: true
 })
 
 mmf.launch((request, response) => {
-  debug(request.userId)
-  const title = 'Hi, MMF assistant here.'
-  const msg = 'I can help you quickly create an appointment on the store calendar, or give a flash briefing of your daily sales status'
-  response.say(title + msg)
-  response.card(title, msg)
-  response.shouldEndSession(false)
+  debug(JSON.stringify(request, null, 2))
+  return getUserProfile(request.context.System.user.accessToken).then(user => {
+    const title = 'Hello ' + user.name + '. It\'s MMF assistant here.'
+    const msg = 'I can help you quickly create an appointment on the store calendar, or give a flash briefing of your daily sales status'
+    response.say(title + msg)
+    response.card(title, msg)
+    response.shouldEndSession(false)
+  }).catch(error => {
+    response.say(error)
+    response.shouldEndSession(false)
+  })
 })
 
 mmf.intent('AMAZON.HelpIntent', undefined, (request, response) => {
@@ -51,9 +57,11 @@ mmf.intent('AMAZON.CancelIntent', undefined, (request, response) => {
 
 mmf.intent('GetNewFactIntent', undefined, (request, response) => {
   debug(JSON.stringify(request, null, 2))
-  const index = Math.floor(Math.random() * facts.length)
-  response.say(facts[index])
-  response.shouldEndSession(true)
+  return getUserProfile(request.context.System.user.accessToken).then((user, error) => {
+    const index = Math.floor(Math.random() * facts.length)
+    response.say(facts[index])
+    response.shouldEndSession(true)
+  })
 })
 
 /**
@@ -124,3 +132,29 @@ const facts = [
   'The temperature inside the Sun can reach 15 million degrees Celsius.',
   'The Moon is moving approximately 3.8 cm away from our planet every year.'
 ]
+
+function getUserProfile (accessToken) {
+  return new Promise((resolve, reject) => {
+    debug('get user profile', accessToken)
+    if (!accessToken) {
+      resolve({})
+    } else {
+      let options = {
+        url: 'https://api.amazon.com/user/profile?access_token=' + accessToken,
+        json: true
+      }
+      request.get(options, (err, response, body) => {
+        if (err) {
+          debug(err)
+          reject(err)
+        } else if (response.statusCode !== 200) {
+          debug(response.statusCode, response.statusMessage)
+          reject(response.statusCode)
+        } else {
+          debug(body)
+          resolve(body)
+        }
+      })
+    }
+  })
+}
