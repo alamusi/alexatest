@@ -137,7 +137,7 @@ mmf.intent('SalesIntent', {
   .say('store sales ' + (request.slot('DATE') || 'today') + ' is as follows:')
   .say('products sold is ' + sales.products.quantity + ', gross is $' + sales.products.gross_total + '. \n')
   .say('services sold is ' + sales.services.quantity + ', gross is $' + sales.services.gross_total + '. \n')
-  .say('total sales quality is ' + sales.total.quantity + ', total gross is $' + sales.total.gross_total + '. \n')
+  .say('total sales quantity is ' + sales.total.quantity + ', total gross is $' + sales.total.gross_total + '. \n')
   .shouldEndSession(true)
 })
 
