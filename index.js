@@ -5,6 +5,8 @@ const mmf = new alexa.app('mmf')
 const request = require('request')
 const crypto = require('crypto-js')
 // const uuidv4 = require('uuid/v4')
+const Fuse = require('fuse.js')
+const AmazonSpeech = require('ssml-builder/amazon_speech')
 
 const debug = require('debug')('alexa.test')
 
@@ -38,7 +40,7 @@ mmf.pre = (request, response, type) => {
       return Promise.resolve()
     } else {
       return getMMFUserProfile(amazonUsers[request.context.System.user.accessToken].email).then(mmfUser => {
-        mmfUsers[amazonUsers[request.context.System.user.accessToken]] = mmfUser
+        mmfUsers[amazonUsers[request.context.System.user.accessToken].email] = mmfUser
       })
     }
   } else {
@@ -79,6 +81,10 @@ mmf.intent('AMAZON.CancelIntent', undefined, (request, response) => {
   response.say(msg)
 })
 
+mmf.customSlot('SERVICE', [{
+  value: 'AMAZON.LITERAL'
+}])
+
 /**
  * AppointmentIntent with schema
  */
@@ -87,7 +93,7 @@ mmf.intent('AppointmentIntent', {
     type: 'delegate'
   },
   slots: {
-    // SERVICE: 'SERVICE',
+    SERVICE: 'SERVICE',
     CUSTOMER: 'AMAZON.US_FIRST_NAME',
     DATE: 'AMAZON.DATE',
     TIME: 'AMAZON.TIME'
@@ -112,9 +118,71 @@ mmf.intent('AppointmentIntent', {
   ]
 }, (request, response) => {
   debug('appointment intent', request.getDialog().dialogState, request.slots)
-  response
-  .say('the reservation is made! ' + request.slot('DATE') + ', ' + request.slot('TIME') + ', for ' + request.slot('CUSTOMER'))
-  .shouldEndSession(true)
+  debug('user ', mmfUsers[amazonUsers[request.context.System.user.accessToken].email])
+  // search matched service
+  let pattern = request.slot('SERVICE')
+  return getServices(mmfUsers[amazonUsers[request.context.System.user.accessToken].email].store.store_id).then(services => {
+    let options = {
+      shouldSort: true,
+      threshold: 0.3,
+      location: 0,
+      distance: 100,
+      maxPatternLength: 32,
+      minMatchCharLength: 2,
+      keys: [
+        'store_service_name'
+      ]
+    }
+    let matched = []
+    services.forEach(category => {
+      let fuse = new Fuse(category.services, options)
+      fuse.search(pattern).forEach(service => {
+        matched.push(service)
+      })
+    })
+    // add appointment
+    let customer = request.slot('CUSTOMER')
+    let date = request.slot('DATE')
+    let time = request.slot('TIME')
+    let phone = '1234567890'
+    let appointment = {
+      first_name: customer,
+      last_name: undefined,
+      email_address: undefined,
+      phone_number: phone,
+      appointment_date: date,
+      services: [{
+        appointment_start_time: date + ' ' + time,
+        appointment_duration: matched[0].regular_duration,
+        service_category_id: matched[0].service_category_id,
+        store_service_id: matched[0].store_service_id,
+        store_service_name: matched[0].store_service_name,
+        staff_id: matched[0].staff[0].staff_id
+      }],
+      store_id: matched[0].store_id
+    }
+    return addAppointment(appointment).then(result => {
+      // return response
+      debug(result)
+      let speech = new AmazonSpeech()
+      .say('The appointment is made on ' + date + ', ' + time + ', for ' + customer + ' with phone number ')
+      .sayAs({
+        word: phone,
+        interpret: 'telephone'
+      })
+      .say('The appointment number is ')
+      .sayAs({
+        word: result.appointment_id,
+        interpret: 'digits'
+      })
+      debug(speech.ssml())
+      response
+      .say(speech.ssml())
+      // .say('The appointment is made on ' + date + ', ' + time + ', for ' + customer + ' with phone number ' + phone + '. \n')
+      // .say('The appointment number is ' + result.appointment_id + '. \n')
+      .shouldEndSession(true)
+    })
+  })
 })
 
 /**
@@ -155,6 +223,73 @@ mmf.intent('SalesIntent', {
  */
 app.get('/schemas', (req, res) => {
   res.send(mmf.schemas.skillBuilder())
+})
+
+/**
+ * sanity
+ */
+app.get('/user', (req, res) => {
+  getMMFUserProfile('alamusi@efemme.com').then(data => {
+    // res.send(user)
+    debug(data)
+    getServices(data.store.store_id).then(services => {
+      let pattern = 'haircut'
+      let options = {
+        shouldSort: true,
+        threshold: 0.3,
+        location: 0,
+        distance: 100,
+        maxPatternLength: 32,
+        minMatchCharLength: 2,
+        keys: [
+          'store_service_name'
+        ]
+      }
+      let result = []
+      services.forEach(category => {
+        let fuse = new Fuse(category.services, options)
+        fuse.search(pattern).forEach(service => {
+          result.push(service)
+        })
+      })
+      debug(result)
+      addAppointment({
+        first_name: 'Davis',
+        last_name: undefined,
+        email_address: undefined,
+        phone_number: '12345678900',
+        appointment_date: '2018-01-13',
+        services: [{
+          appointment_start_time: '2018-01-13 13:00',
+          appointment_duration: 60,
+          service_category_id: 1796,
+          store_service_id: 4139,
+          store_service_name: 'Men’s Haircut',
+          staff_id: 32907
+        }],
+        store_id: 32863
+      }).then(appointment => {
+        let speech = new AmazonSpeech()
+        .say('The appointment is made on ' + '2018-01-13' + ', ' + '13:00' + ', for ' + 'Tom' + ' with phone number ')
+        .sayAs({
+          word: '12345678900',
+          interpret: 'telephone'
+        })
+        .pause('500ms')
+        .say('The appointment number is ')
+        .sayAs({
+          word: appointment.appointment_id,
+          interpret: 'digits'
+        })
+        debug(speech.ssml())
+        res.send(speech.ssml())
+      })
+    }).catch(error => {
+      res.send(error)
+    })
+  }).catch(error => {
+    res.send(error)
+  })
 })
 
 // app.get('/feed', (req, res) => {
@@ -214,55 +349,6 @@ if (process.env.LOCALTUNNEL === 'true') {
 //   'Saturn radiates two and a half times more energy into space than it receives from the sun.',
 //   'The temperature inside the Sun can reach 15 million degrees Celsius.',
 //   'The Moon is moving approximately 3.8 cm away from our planet every year.'
-// ]
-
-// const services = [
-//   {
-//     'store_service_id': 2,
-//     'store_id': 32746,
-//     'business_category_id': 14,
-//     'service_category_id': 6,
-//     'store_service_name': 'test2',
-//     'store_service_description': '',
-//     'price_type_id': 1,
-//     'regular_price': '1.00',
-//     'lowest_price': '1.00',
-//     'regular_duration': 5,
-//     'tax_id': 4,
-//     'has_processing_time': 1,
-//     'enable_online_booking': 1,
-//     'enable_voucher_sale': 1,
-//     'voucher_expiry_period_months': 1,
-//     'sort_order': 1,
-//     'create_staff_id': 32746,
-//     'created_at': 1506335086,
-//     'last_update_staff_id': 32746,
-//     'last_updated_at': 1506335561,
-//     'dr_status': 1
-//   },
-//   {
-//     'store_service_id': 1,
-//     'store_id': 32746,
-//     'business_category_id': 14,
-//     'service_category_id': 6,
-//     'store_service_name': 'test1',
-//     'store_service_description': '',
-//     'price_type_id': 1,
-//     'regular_price': '1.00',
-//     'lowest_price': '1.00',
-//     'regular_duration': 5,
-//     'tax_id': 4,
-//     'has_processing_time': 1,
-//     'enable_online_booking': 1,
-//     'enable_voucher_sale': 1,
-//     'voucher_expiry_period_months': 1,
-//     'sort_order': 0,
-//     'create_staff_id': 32746,
-//     'created_at': 1506334978,
-//     'last_update_staff_id': 32746,
-//     'last_updated_at': 1506335561,
-//     'dr_status': 1
-//   }
 // ]
 
 const sales = {
@@ -334,7 +420,7 @@ function getMMFUserProfile (email) {
           reject(response.statusCode)
         } else {
           debug(body)
-          resolve(body)
+          resolve(body.data)
         }
       })
     }
@@ -346,4 +432,61 @@ function apiSignature (uri) {
   let fullUrl = `${uri}${currentTime}`
   let sha1 = crypto.HmacSHA1(fullUrl, process.env.MMF_SECRET).toString().toLocaleUpperCase()
   return sha1 + ',' + currentTime
+}
+
+function getServices (store) {
+  return new Promise((resolve, reject) => {
+    let uri = '/ms/service/get'
+    let options = {
+      url: process.env.MMF_URL + uri,
+      headers: {
+        'X-MMF-App-Key': process.env.MMF_KEY,
+        'X-MMF-Request-Sign': apiSignature(uri)
+      },
+      qs: {
+        store_id: store
+      },
+      json: true
+    }
+    request.get(options, (err, response, body) => {
+      if (err) {
+        debug(err)
+        reject(err)
+      } else if (response.statusCode !== 200) {
+        debug(response.statusCode, response.statusMessage)
+        reject(response.statusCode)
+      } else {
+        debug(body)
+        resolve(body.data.list)
+      }
+    })
+  })
+}
+
+function addAppointment (appointment) {
+  return new Promise((resolve, reject) => {
+    let uri = '/ms/appointment/add'
+    let options = {
+      url: process.env.MMF_URL + uri,
+      headers: {
+        'X-MMF-App-Key': process.env.MMF_KEY,
+        'X-MMF-Request-Sign': apiSignature(uri)
+      },
+      body: appointment,
+      json: true
+    }
+    debug(JSON.stringify(options, null, 2))
+    request.post(options, (err, response, body) => {
+      if (err) {
+        debug(err)
+        reject(err)
+      } else if (response.statusCode !== 200) {
+        debug(response.statusCode, response.statusMessage)
+        reject(response.statusCode)
+      } else {
+        debug(body)
+        resolve(body.data)
+      }
+    })
+  })
 }
