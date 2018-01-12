@@ -57,7 +57,7 @@ mmf.launch((request, response) => {
 })
 
 mmf.intent('AMAZON.HelpIntent', undefined, (request, response) => {
-  let msg = 'you can ask - "how much is ombre" to check price, or say - "book digital perm tomorrow at 2pm" to make an appointment.'
+  let msg = 'you can ask - "create an appointment on Friday at 3PM" to add a booking to store calendar, or say - "show yesterday\'s sales" to review store performance. '
   response.say(msg)
   response.shouldEndSession(false)
 })
@@ -72,30 +72,47 @@ mmf.intent('AMAZON.CancelIntent', undefined, (request, response) => {
   response.say(msg)
 })
 
-// mmf.intent('FactIntent', {
-//   utterances: [
-//     'a fact',
-//     'a space fact',
-//     'tell me a fact',
-//     'tell me a space fact',
-//     'give me a fact',
-//     'give me a space fact',
-//     'tell me trivia',
-//     'tell me a space trivia',
-//     'give me trivia',
-//     'give me a space trivia',
-//     'give me some information',
-//     'give me some space information',
-//     'tell me something',
-//     'give me something'
-//   ]
-// }, (request, response) => {
-//   debug(JSON.stringify(request, null, 2))
-//   response
-//   .say(facts[Math.floor(Math.random() * facts.length)])
-//   .shouldEndSession(true)
-// })
+/**
+ * AppointmentIntent with schema
+ */
+mmf.intent('AppointmentIntent', {
+  dialog: {
+    type: 'delegate'
+  },
+  slots: {
+    // SERVICE: 'SERVICE',
+    CUSTOMER: 'AMAZON.US_FIRST_NAME',
+    DATE: 'AMAZON.DATE',
+    TIME: 'AMAZON.TIME'
+  },
+  utterances: [
+    '{make|create|add|save|book} {an appointment|a reservation} {|for} {-|CUSTOMER} {|on|by|for|as} {-|DATE} {|at} {-|TIME}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|for} {-|CUSTOMER} {|at} {-|TIME} {|on|by|for|as} {-|DATE}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|on|by|for|as} {-|DATE} {|at} {-|TIME} {|for} {-|CUSTOMER}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|on|by|for|as} {-|DATE} {|for} {-|CUSTOMER} {|at} {-|TIME}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|at} {-|TIME} {|on|by|for|as} {-|DATE} {|for} {-|CUSTOMER}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|at} {-|TIME} {|for} {-|CUSTOMER} {|on|by|for|as} {-|DATE}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|for} {-|CUSTOMER} {|at} {-|TIME}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|for} {-|CUSTOMER} {|on|by|for|as} {-|DATE}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|on|by|for|as} {-|DATE} {|at} {-|TIME}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|on|by|for|as} {-|DATE} {|for} {-|CUSTOMER} ',
+    '{make|create|add|save|book} {an appointment|a reservation} {|at} {-|TIME} {|on|by|for|as} {-|DATE}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|at} {-|TIME} {|for} {-|CUSTOMER}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|for} {-|CUSTOMER}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|on|by|for|as} {-|DATE}',
+    '{make|create|add|save|book} {an appointment|a reservation} {|at} {-|TIME}',
+    '{make|create|add|save|book} {an appointment|a reservation}'
+  ]
+}, (request, response) => {
+  debug('appointment intent', request.getDialog().dialogState, request.slots)
+  response
+  .say('the reservation is made! ' + request.slot('DATE') + ', ' + request.slot('TIME') + ', for ' + request.slot('CUSTOMER'))
+  .shouldEndSession(true)
+})
 
+/**
+ * SalesIntent with schema
+ */
 mmf.intent('SalesIntent', {
   slots: {
     DATE: 'AMAZON.DATE'
@@ -107,6 +124,7 @@ mmf.intent('SalesIntent', {
     '{what|how} is {|my|our|store} {performance|sales|status} {|of|for|as|on} {-|DATE}'
   ]
 }, (request, response) => {
+  debug('sales intent ', request.getDialog().dialogState, request.slots)
   let date = new Date()
   if (request.slot('DATE')) {
     date = new Date(request.slot('DATE'))
@@ -121,6 +139,7 @@ mmf.intent('SalesIntent', {
   .say('store sales on ' + date.getDate() + ' is as follows:')
   .say('products sold ' + sales.products.quantity + ', gross $' + sales.products.gross_total + '. \n')
   .say('services sold ' + sales.services.quantity + ', gross $' + sales.services.gross_total + '. \n')
+  .say('total sales quality is ' + sales.total.quantity + ', gross value $' + sales.total.gross_total + '. \n')
   .shouldEndSession(true)
 })
 
