@@ -4,7 +4,7 @@ const alexa = require('alexa-app')
 const mmf = new alexa.app('mmf')
 const request = require('request')
 const crypto = require('crypto-js')
-const uuidv4 = require('uuid/v4')
+// const uuidv4 = require('uuid/v4')
 
 const debug = require('debug')('alexa.test')
 
@@ -33,19 +33,28 @@ let mmfUsers = {
 
 mmf.pre = (request, response, type) => {
   debug('pre ' + type)
-  return getAmazonUserProfile(request.context.System.user.accessToken).then(amazonUser => {
-    amazonUsers[request.context.System.user.accessToken] = amazonUser
-    return getMMFUserProfile(amazonUser.email).then(mmfUser => {
-      mmfUsers[amazonUser.email] = mmfUser
+  if (amazonUsers[request.context.System.user.accessToken]) {
+    if (mmfUsers[amazonUsers[request.context.System.user.accessToken].email]) {
+      return Promise.resolve()
+    } else {
+      return getMMFUserProfile(amazonUsers[request.context.System.user.accessToken].email).then(mmfUser => {
+        mmfUsers[amazonUsers[request.context.System.user.accessToken]] = mmfUser
+      })
+    }
+  } else {
+    return getAmazonUserProfile(request.context.System.user.accessToken).then(amazonUser => {
+      amazonUsers[request.context.System.user.accessToken] = amazonUser
+      return getMMFUserProfile(amazonUser.email).then(mmfUser => {
+        mmfUsers[amazonUser.email] = mmfUser
+      })
+    }).catch(error => {
+      debug('pre error', error)
+      amazonUsers[request.context.System.user.accessToken] = {}
     })
-  }).catch(error => {
-    debug('pre error', error)
-    amazonUsers[request.context.System.user.accessToken] = {}
-  })
+  }
 }
 
 mmf.launch((request, response) => {
-  debug(JSON.stringify(request, null, 2))
   const title = 'Hello ' + amazonUsers[request.context.System.user.accessToken].name + '. It\'s MMF assistant here. \n'
   const msg = 'I can help quickly create an appointment on the store calendar, or show you the store sales status. '
   response
@@ -55,7 +64,7 @@ mmf.launch((request, response) => {
 })
 
 mmf.intent('AMAZON.HelpIntent', undefined, (request, response) => {
-  let msg = 'you can ask - "create an appointment on Friday at 3PM" to add a booking to store calendar, or say - "show yesterday\'s sales" to review store performance. '
+  let msg = 'you can say "create an appointment tomorrow at 3PM for Mary" to add a reservation to store calendar, or "show yesterday\'s sales" to review store performance. '
   response.say(msg)
   response.shouldEndSession(false)
 })
@@ -128,7 +137,7 @@ mmf.intent('SalesIntent', {
     date = new Date(request.slot('DATE'))
     if (date && date.getTime() > new Date().getTime()) {
       response
-      .say('emm... we can\'t predict the future yet. do you mind trying today or a day in the past?')
+      .say('well... we are not quite confident at predicting the future yet. do you mind trying today or a day in the past?')
       .shouldEndSession(true)
       return
     }
@@ -148,17 +157,17 @@ app.get('/schemas', (req, res) => {
   res.send(mmf.schemas.skillBuilder())
 })
 
-app.get('/feed', (req, res) => {
-  let date = new Date()
-  res.send({
-    'uid': 'urn:uuid:' + uuidv4(),
-    'updateDate': date.toISOString(),
-    'titleText': 'MMF fact at ' + date.getHours() + ' ' + date.getMinutes(),
-    'mainText': facts[Math.floor(Math.random() * facts.length)],
-    // 'streamUrl': 'https://developer.amazon.com/public/community/blog/myaudiofile.mp3',
-    'redirectionUrl': 'https://developer.amazon.com/public/community/blog'
-  })
-})
+// app.get('/feed', (req, res) => {
+//   let date = new Date()
+//   res.send({
+//     'uid': 'urn:uuid:' + uuidv4(),
+//     'updateDate': date.toISOString(),
+//     'titleText': 'Space Fact at ' + date.getHours() + ' ' + date.getMinutes(),
+//     'mainText': facts[Math.floor(Math.random() * facts.length)],
+//     // 'streamUrl': 'https://developer.amazon.com/public/community/blog/myaudiofile.mp3',
+//     'redirectionUrl': 'https://developer.amazon.com/public/community/blog'
+//   })
+// })
 
 /**
  * sanity
@@ -191,70 +200,70 @@ if (process.env.LOCALTUNNEL === 'true') {
   })
 }
 
-const facts = [
-  'A year on Mercury is just 88 days long.',
-  'Despite being farther from the Sun, Venus experiences higher temperatures than Mercury.',
-  'Venus rotates counter-clockwise, possibly because of a collision in the past with an asteroid.',
-  'On Mars, the Sun appears about half the size as it does on Earth.',
-  'Earth is the only planet not named after a god.',
-  'Jupiter has the shortest day of all the planets.',
-  'The Milky Way galaxy will collide with the Andromeda Galaxy in about 5 billion years.',
-  'The Sun contains 99.86% of the mass in the Solar System.',
-  'The Sun is an almost perfect sphere.',
-  'A total solar eclipse can happen once every 1 to 2 years. This makes them a rare event.',
-  'Saturn radiates two and a half times more energy into space than it receives from the sun.',
-  'The temperature inside the Sun can reach 15 million degrees Celsius.',
-  'The Moon is moving approximately 3.8 cm away from our planet every year.'
-]
+// const facts = [
+//   'A year on Mercury is just 88 days long.',
+//   'Despite being farther from the Sun, Venus experiences higher temperatures than Mercury.',
+//   'Venus rotates counter-clockwise, possibly because of a collision in the past with an asteroid.',
+//   'On Mars, the Sun appears about half the size as it does on Earth.',
+//   'Earth is the only planet not named after a god.',
+//   'Jupiter has the shortest day of all the planets.',
+//   'The Milky Way galaxy will collide with the Andromeda Galaxy in about 5 billion years.',
+//   'The Sun contains 99.86% of the mass in the Solar System.',
+//   'The Sun is an almost perfect sphere.',
+//   'A total solar eclipse can happen once every 1 to 2 years. This makes them a rare event.',
+//   'Saturn radiates two and a half times more energy into space than it receives from the sun.',
+//   'The temperature inside the Sun can reach 15 million degrees Celsius.',
+//   'The Moon is moving approximately 3.8 cm away from our planet every year.'
+// ]
 
-const services = [
-  {
-    'store_service_id': 2,
-    'store_id': 32746,
-    'business_category_id': 14,
-    'service_category_id': 6,
-    'store_service_name': 'test2',
-    'store_service_description': '',
-    'price_type_id': 1,
-    'regular_price': '1.00',
-    'lowest_price': '1.00',
-    'regular_duration': 5,
-    'tax_id': 4,
-    'has_processing_time': 1,
-    'enable_online_booking': 1,
-    'enable_voucher_sale': 1,
-    'voucher_expiry_period_months': 1,
-    'sort_order': 1,
-    'create_staff_id': 32746,
-    'created_at': 1506335086,
-    'last_update_staff_id': 32746,
-    'last_updated_at': 1506335561,
-    'dr_status': 1
-  },
-  {
-    'store_service_id': 1,
-    'store_id': 32746,
-    'business_category_id': 14,
-    'service_category_id': 6,
-    'store_service_name': 'test1',
-    'store_service_description': '',
-    'price_type_id': 1,
-    'regular_price': '1.00',
-    'lowest_price': '1.00',
-    'regular_duration': 5,
-    'tax_id': 4,
-    'has_processing_time': 1,
-    'enable_online_booking': 1,
-    'enable_voucher_sale': 1,
-    'voucher_expiry_period_months': 1,
-    'sort_order': 0,
-    'create_staff_id': 32746,
-    'created_at': 1506334978,
-    'last_update_staff_id': 32746,
-    'last_updated_at': 1506335561,
-    'dr_status': 1
-  }
-]
+// const services = [
+//   {
+//     'store_service_id': 2,
+//     'store_id': 32746,
+//     'business_category_id': 14,
+//     'service_category_id': 6,
+//     'store_service_name': 'test2',
+//     'store_service_description': '',
+//     'price_type_id': 1,
+//     'regular_price': '1.00',
+//     'lowest_price': '1.00',
+//     'regular_duration': 5,
+//     'tax_id': 4,
+//     'has_processing_time': 1,
+//     'enable_online_booking': 1,
+//     'enable_voucher_sale': 1,
+//     'voucher_expiry_period_months': 1,
+//     'sort_order': 1,
+//     'create_staff_id': 32746,
+//     'created_at': 1506335086,
+//     'last_update_staff_id': 32746,
+//     'last_updated_at': 1506335561,
+//     'dr_status': 1
+//   },
+//   {
+//     'store_service_id': 1,
+//     'store_id': 32746,
+//     'business_category_id': 14,
+//     'service_category_id': 6,
+//     'store_service_name': 'test1',
+//     'store_service_description': '',
+//     'price_type_id': 1,
+//     'regular_price': '1.00',
+//     'lowest_price': '1.00',
+//     'regular_duration': 5,
+//     'tax_id': 4,
+//     'has_processing_time': 1,
+//     'enable_online_booking': 1,
+//     'enable_voucher_sale': 1,
+//     'voucher_expiry_period_months': 1,
+//     'sort_order': 0,
+//     'create_staff_id': 32746,
+//     'created_at': 1506334978,
+//     'last_update_staff_id': 32746,
+//     'last_updated_at': 1506335561,
+//     'dr_status': 1
+//   }
+// ]
 
 const sales = {
   'services': {
