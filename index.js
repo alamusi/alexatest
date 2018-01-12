@@ -4,7 +4,6 @@ const alexa = require('alexa-app')
 const mmf = new alexa.app('mmf')
 const request = require('request')
 const crypto = require('crypto-js')
-// const uuidv4 = require('uuid/v4')
 const Fuse = require('fuse.js')
 const AmazonSpeech = require('ssml-builder/amazon_speech')
 
@@ -162,7 +161,6 @@ mmf.intent('AppointmentIntent', {
       store_id: matched[0].store_id
     }
     return addAppointment(appointment).then(result => {
-      // return response
       debug(result)
       let speech = new AmazonSpeech()
       .say('The appointment is made on ' + date + ', ' + time + ', for ' + customer + ' with phone number ')
@@ -170,16 +168,15 @@ mmf.intent('AppointmentIntent', {
         word: phone,
         interpret: 'telephone'
       })
-      .say('The appointment number is ')
+      .say('.\n The appointment number is ')
       .sayAs({
         word: result.appointment_id,
         interpret: 'digits'
       })
-      debug(speech.ssml())
+      .say('. \n')
+      // return response
       response
       .say(speech.ssml())
-      // .say('The appointment is made on ' + date + ', ' + time + ', for ' + customer + ' with phone number ' + phone + '. \n')
-      // .say('The appointment number is ' + result.appointment_id + '. \n')
       .shouldEndSession(true)
     })
   })
@@ -292,18 +289,6 @@ app.get('/user', (req, res) => {
   })
 })
 
-// app.get('/feed', (req, res) => {
-//   let date = new Date()
-//   res.send({
-//     'uid': 'urn:uuid:' + uuidv4(),
-//     'updateDate': date.toISOString(),
-//     'titleText': 'Space Fact at ' + date.getHours() + ' ' + date.getMinutes(),
-//     'mainText': facts[Math.floor(Math.random() * facts.length)],
-//     // 'streamUrl': 'https://developer.amazon.com/public/community/blog/myaudiofile.mp3',
-//     'redirectionUrl': 'https://developer.amazon.com/public/community/blog'
-//   })
-// })
-
 /**
  * sanity
  */
@@ -334,22 +319,6 @@ if (process.env.LOCALTUNNEL === 'true') {
     debug('localhost is no longer tunnelling through', tunnel.url)
   })
 }
-
-// const facts = [
-//   'A year on Mercury is just 88 days long.',
-//   'Despite being farther from the Sun, Venus experiences higher temperatures than Mercury.',
-//   'Venus rotates counter-clockwise, possibly because of a collision in the past with an asteroid.',
-//   'On Mars, the Sun appears about half the size as it does on Earth.',
-//   'Earth is the only planet not named after a god.',
-//   'Jupiter has the shortest day of all the planets.',
-//   'The Milky Way galaxy will collide with the Andromeda Galaxy in about 5 billion years.',
-//   'The Sun contains 99.86% of the mass in the Solar System.',
-//   'The Sun is an almost perfect sphere.',
-//   'A total solar eclipse can happen once every 1 to 2 years. This makes them a rare event.',
-//   'Saturn radiates two and a half times more energy into space than it receives from the sun.',
-//   'The temperature inside the Sun can reach 15 million degrees Celsius.',
-//   'The Moon is moving approximately 3.8 cm away from our planet every year.'
-// ]
 
 const sales = {
   'services': {
