@@ -1,7 +1,5 @@
 require('dotenv').config()
 
-const aws = require('aws-sdk')
-const a4b = new aws.AlexaForBusiness()
 const alexa = require('alexa-app')
 const mmf = new alexa.app('mmf')
 const request = require('request')
@@ -136,10 +134,10 @@ mmf.intent('SalesIntent', {
     }
   }
   response
-  .say('store sales on ' + date.getDate() + ' is as follows:')
-  .say('products sold ' + sales.products.quantity + ', gross $' + sales.products.gross_total + '. \n')
-  .say('services sold ' + sales.services.quantity + ', gross $' + sales.services.gross_total + '. \n')
-  .say('total sales quality is ' + sales.total.quantity + ', gross value $' + sales.total.gross_total + '. \n')
+  .say('store sales ' + (request.slot('DATE') || 'today') + ' is as follows:')
+  .say('products sold is ' + sales.products.quantity + ', gross is $' + sales.products.gross_total + '. \n')
+  .say('services sold is ' + sales.services.quantity + ', gross is $' + sales.services.gross_total + '. \n')
+  .say('total sales quality is ' + sales.total.quantity + ', total gross is $' + sales.total.gross_total + '. \n')
   .shouldEndSession(true)
 })
 
@@ -148,31 +146,6 @@ mmf.intent('SalesIntent', {
  */
 app.get('/schemas', (req, res) => {
   res.send(mmf.schemas.skillBuilder())
-})
-
-/**
- * users
- */
-app.get('/users', (req, res) => {
-  // let params = {
-  //   Filters: [
-  //     {
-  //       Key: 'UserArn',
-  //       Values: []
-  //     }
-  //   ]
-  // }
-  // a4b.searchUsers(undefined, (err, data) => {
-  //   if (err) {
-  //     debug(err)
-  //     res.send(err)
-  //   } else {
-  //     res.send(data)
-  //   }
-  // })
-  getMMFUserProfile('zdw@meimeifa.com').then(data => {
-    res.send(data)
-  })
 })
 
 app.get('/feed', (req, res) => {
