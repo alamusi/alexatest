@@ -5,6 +5,8 @@ const a4b = new aws.AlexaForBusiness()
 const alexa = require('alexa-app')
 const mmf = new alexa.app('mmf')
 const request = require('request')
+const crypto = require('crypto-js')
+const uuidv4 = require('uuid/v4')
 
 const debug = require('debug')('alexa.test')
 
@@ -25,18 +27,33 @@ mmf.express({
   debug: true
 })
 
+let amazonUsers = {
+}
+
+let mmfUsers = {
+}
+
+mmf.pre = (request, response, type) => {
+  debug('pre ' + type)
+  return getAmazonUserProfile(request.context.System.user.accessToken).then(amazonUser => {
+    amazonUsers[request.context.System.user.accessToken] = amazonUser
+    return getMMFUserProfile(amazonUser.email).then(mmfUser => {
+      mmfUsers[amazonUser.email] = mmfUser
+    })
+  }).catch(error => {
+    debug('pre error', error)
+    amazonUsers[request.context.System.user.accessToken] = {}
+  })
+}
+
 mmf.launch((request, response) => {
   debug(JSON.stringify(request, null, 2))
-  return getUserProfile(request.context.System.user.accessToken).then(user => {
-    const title = 'Hello ' + user.name + '. It\'s MMF assistant here.'
-    const msg = 'I can help you quickly create an appointment on the store calendar, or give a flash briefing of your daily sales status'
-    response.say(title + msg)
-    response.card(title, msg)
-    response.shouldEndSession(false)
-  }).catch(error => {
-    response.say(error)
-    response.shouldEndSession(false)
-  })
+  const title = 'Hello ' + amazonUsers[request.context.System.user.accessToken].name + '. It\'s MMF assistant here. \n'
+  const msg = 'I can help quickly create an appointment on the store calendar, or show you the store sales status. '
+  response
+  .say(title + msg)
+  .card(title, msg)
+  .shouldEndSession(false)
 })
 
 mmf.intent('AMAZON.HelpIntent', undefined, (request, response) => {
@@ -55,13 +72,63 @@ mmf.intent('AMAZON.CancelIntent', undefined, (request, response) => {
   response.say(msg)
 })
 
-mmf.intent('GetNewFactIntent', undefined, (request, response) => {
-  debug(JSON.stringify(request, null, 2))
-  return getUserProfile(request.context.System.user.accessToken).then((user, error) => {
-    const index = Math.floor(Math.random() * facts.length)
-    response.say(facts[index])
-    response.shouldEndSession(true)
-  })
+// mmf.intent('FactIntent', {
+//   utterances: [
+//     'a fact',
+//     'a space fact',
+//     'tell me a fact',
+//     'tell me a space fact',
+//     'give me a fact',
+//     'give me a space fact',
+//     'tell me trivia',
+//     'tell me a space trivia',
+//     'give me trivia',
+//     'give me a space trivia',
+//     'give me some information',
+//     'give me some space information',
+//     'tell me something',
+//     'give me something'
+//   ]
+// }, (request, response) => {
+//   debug(JSON.stringify(request, null, 2))
+//   response
+//   .say(facts[Math.floor(Math.random() * facts.length)])
+//   .shouldEndSession(true)
+// })
+
+mmf.intent('SalesIntent', {
+  slots: {
+    DATE: 'AMAZON.DATE'
+  },
+  utterances: [
+    '{show|tell|give|provide} {|me|us|store} {-|DATE} {performance|sales|status}',
+    '{show|tell|give|provide} {|me|us|store} {performance|sales|status} {|of|for|as|on} {-|DATE}',
+    '{what|how} is {|my|our|store} {-|DATE} {performance|sales|status}',
+    '{what|how} is {|my|our|store} {performance|sales|status} {|of|for|as|on} {-|DATE}'
+  ]
+}, (request, response) => {
+  let date = new Date()
+  if (request.slot('DATE')) {
+    date = new Date(request.slot('DATE'))
+    if (date && date.getTime() > new Date().getTime()) {
+      response
+      .say('emm... we can\'t predict the future yet. do you mind trying today or a day in the past?')
+      .shouldEndSession(true)
+      return
+    }
+  }
+  response
+  .say('store sales on ' + date.getDate() + ' is as follows:')
+  .say('products sold ' + sales.products.quantity + ', gross $' + sales.products.gross_total + '. \n')
+  .say('services sold ' + sales.services.quantity + ', gross $' + sales.services.gross_total + '. \n')
+  .shouldEndSession(true)
+})
+
+/**
+ * generate alexa skill schema
+ */
+app.get('/schemas', (req, res) => {
+  res.send(mmf.schemas.skillBuilder())
 })
 
 /**
@@ -76,13 +143,28 @@ app.get('/users', (req, res) => {
   //     }
   //   ]
   // }
-  a4b.searchUsers(undefined, (err, data) => {
-    if (err) {
-      debug(err)
-      res.send(err)
-    } else {
-      res.send(data)
-    }
+  // a4b.searchUsers(undefined, (err, data) => {
+  //   if (err) {
+  //     debug(err)
+  //     res.send(err)
+  //   } else {
+  //     res.send(data)
+  //   }
+  // })
+  getMMFUserProfile('zdw@meimeifa.com').then(data => {
+    res.send(data)
+  })
+})
+
+app.get('/feed', (req, res) => {
+  let date = new Date()
+  res.send({
+    'uid': 'urn:uuid:' + uuidv4(),
+    'updateDate': date.toISOString(),
+    'titleText': 'MMF fact at ' + date.getHours() + ' ' + date.getMinutes(),
+    'mainText': facts[Math.floor(Math.random() * facts.length)],
+    // 'streamUrl': 'https://developer.amazon.com/public/community/blog/myaudiofile.mp3',
+    'redirectionUrl': 'https://developer.amazon.com/public/community/blog'
   })
 })
 
@@ -90,7 +172,7 @@ app.get('/users', (req, res) => {
  * sanity
  */
 app.get('/test', (req, res) => {
-  res.send('test' + new Date())
+  res.send(new Date().toISOString())
 })
 
 /**
@@ -133,9 +215,77 @@ const facts = [
   'The Moon is moving approximately 3.8 cm away from our planet every year.'
 ]
 
-function getUserProfile (accessToken) {
+const services = [
+  {
+    'store_service_id': 2,
+    'store_id': 32746,
+    'business_category_id': 14,
+    'service_category_id': 6,
+    'store_service_name': 'test2',
+    'store_service_description': '',
+    'price_type_id': 1,
+    'regular_price': '1.00',
+    'lowest_price': '1.00',
+    'regular_duration': 5,
+    'tax_id': 4,
+    'has_processing_time': 1,
+    'enable_online_booking': 1,
+    'enable_voucher_sale': 1,
+    'voucher_expiry_period_months': 1,
+    'sort_order': 1,
+    'create_staff_id': 32746,
+    'created_at': 1506335086,
+    'last_update_staff_id': 32746,
+    'last_updated_at': 1506335561,
+    'dr_status': 1
+  },
+  {
+    'store_service_id': 1,
+    'store_id': 32746,
+    'business_category_id': 14,
+    'service_category_id': 6,
+    'store_service_name': 'test1',
+    'store_service_description': '',
+    'price_type_id': 1,
+    'regular_price': '1.00',
+    'lowest_price': '1.00',
+    'regular_duration': 5,
+    'tax_id': 4,
+    'has_processing_time': 1,
+    'enable_online_booking': 1,
+    'enable_voucher_sale': 1,
+    'voucher_expiry_period_months': 1,
+    'sort_order': 0,
+    'create_staff_id': 32746,
+    'created_at': 1506334978,
+    'last_update_staff_id': 32746,
+    'last_updated_at': 1506335561,
+    'dr_status': 1
+  }
+]
+
+const sales = {
+  'services': {
+    'quantity': 2,
+    'gross_total': 80
+  },
+  'products': {
+    'quantity': 1,
+    'gross_total': 9
+  },
+  'vouchers': {
+    'quantity': 0,
+    'gross_total': 0
+  },
+  'total': {
+    'quantity': 3,
+    'gross_total': 89
+  }
+}
+
+function getAmazonUserProfile (accessToken) {
   return new Promise((resolve, reject) => {
-    debug('get user profile', accessToken)
+    debug('get amazon user profile', accessToken)
     if (!accessToken) {
       resolve({})
     } else {
@@ -157,4 +307,42 @@ function getUserProfile (accessToken) {
       })
     }
   })
+}
+
+function getMMFUserProfile (email) {
+  return new Promise((resolve, reject) => {
+    debug('get mmf user profile', email)
+    const uri = '/ms/store/view'
+    if (!email) {
+      resolve({})
+    } else {
+      let options = {
+        url: process.env.MMF_URL + uri + '?email_address=' + email,
+        headers: {
+          'X-MMF-App-Key': process.env.MMF_KEY,
+          'X-MMF-Request-Sign': apiSignature(uri)
+        },
+        json: true
+      }
+      request.get(options, (err, response, body) => {
+        if (err) {
+          debug(err)
+          reject(err)
+        } else if (response.statusCode !== 200) {
+          debug(response.statusCode, response.statusMessage)
+          reject(response.statusCode)
+        } else {
+          debug(body)
+          resolve(body)
+        }
+      })
+    }
+  })
+}
+
+function apiSignature (uri) {
+  let currentTime = Math.floor(Date.now() / 1000)
+  let fullUrl = `${uri}${currentTime}`
+  let sha1 = crypto.HmacSHA1(fullUrl, process.env.MMF_SECRET).toString().toLocaleUpperCase()
+  return sha1 + ',' + currentTime
 }
